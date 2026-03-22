@@ -229,7 +229,7 @@ function Navigation() {
 // AUTH MODAL COMPONENT
 // ============================================
 function AuthModal() {
-  const { showAuthModal, authMode, setAuthMode, setShowAuthModal, setUser } = useAppStore()
+  const { showAuthModal, authMode, setAuthMode, setShowAuthModal, setUser, setCurrentView } = useAppStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -247,19 +247,21 @@ function AuthModal() {
       if (authMode === 'login') {
         const { user } = await authAPI.login(email, password)
         setUser(user)
+        setCurrentView(user.role === 'provider' ? 'provider' : 'booking')
         toast({ title: `Welcome back, ${user.name}!` })
       } else {
-        const { user } = await authAPI.signup({ 
-          email, 
-          password, 
-          name, 
-          phone, 
+        const { user } = await authAPI.signup({
+          email,
+          password,
+          name,
+          phone,
           role,
           specialization: role === 'provider' ? specialization : undefined,
           hourlyRate: role === 'provider' ? hourlyRate : undefined,
         })
         setUser(user)
-        toast({ title: `Welcome to ServiceHub, ${user.name}!` })
+        setCurrentView(user.role === 'provider' ? 'provider' : 'booking')
+        toast({ title: `Welcome to HireNFire, ${user.name}!` })
       }
       setShowAuthModal(false)
       setEmail('')
@@ -285,7 +287,7 @@ function AuthModal() {
           <DialogDescription>
             {authMode === 'login' 
               ? 'Sign in to book services and manage your appointments' 
-              : 'Join ServiceHub to get started'}
+              : 'Join HireNFire to get started'}
           </DialogDescription>
         </DialogHeader>
 
@@ -1076,7 +1078,25 @@ function BookingPage() {
 function ProviderDashboard() {
   const { user, isOnline, setIsOnline, pendingBookings, setPendingBookings, currentBooking, setCurrentBooking } = useAppStore()
   const [loading, setLoading] = useState(false)
-  const [earnings, setEarnings] = useState({ today: 285.50, week: 1450.00, total: 18500.00 })
+  const [earnings, setEarnings] = useState({ today: 0, week: 0, total: 0 })
+  const [stats, setStats] = useState<any>(null)
+  const [statsLoading, setStatsLoading] = useState(true)
+
+  // Load real stats from API
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const data = await providerAPI.getStats()
+        setStats(data)
+        setEarnings(data.earnings)
+      } catch (err) {
+        console.error('Failed to load stats:', err)
+      } finally {
+        setStatsLoading(false)
+      }
+    }
+    loadStats()
+  }, [])
 
   // Load pending bookings
   const loadPendingBookings = useCallback(async () => {
@@ -1279,26 +1299,26 @@ function ProviderDashboard() {
     <div className="pt-20 pb-8 px-4 min-h-screen bg-muted/30">
       <div className="max-w-6xl mx-auto">
         {/* Status Bar */}
-        <Card className="mb-6">
+        <Card className={`mb-6 border-2 ${isOnline ? 'border-green-500/30 bg-green-50/50 dark:bg-green-950/10' : ''}`}>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                  isOnline ? 'bg-green-500' : 'bg-muted'
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
+                  isOnline ? 'bg-green-500 shadow-lg shadow-green-500/30 animate-pulse' : 'bg-muted'
                 }`}>
-                  <Radio className={`w-6 h-6 ${isOnline ? 'text-white' : 'text-muted-foreground'}`} />
+                  <Radio className={`w-7 h-7 ${isOnline ? 'text-white' : 'text-muted-foreground'}`} />
                 </div>
                 <div>
-                  <p className="font-semibold text-lg">
+                  <p className="font-bold text-xl">
                     {isOnline ? 'You are Online' : 'You are Offline'}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {isOnline ? 'Accepting job requests' : 'Go online to receive jobs'}
+                    {isOnline ? 'Accepting job requests' : 'Go online to start earning'}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Label htmlFor="online-toggle" className="text-sm">
+                <Label htmlFor="online-toggle" className="text-sm font-medium">
                   {isOnline ? 'Online' : 'Offline'}
                 </Label>
                 <Switch
@@ -1312,16 +1332,63 @@ function ProviderDashboard() {
           </CardContent>
         </Card>
 
+        {/* Earnings Overview - Uber Style */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <Card className="bg-gradient-to-br from-orange-500 to-red-500 text-white border-0 shadow-lg shadow-orange-500/20">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-5 h-5 text-white/70" />
+                <span className="text-sm text-white/70 font-medium">Today</span>
+              </div>
+              <p className="text-3xl font-bold">${earnings.today.toFixed(0)}</p>
+              <p className="text-xs text-white/60 mt-1">{stats?.jobs?.today || 0} jobs</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-0 shadow-lg shadow-blue-500/20">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-5 h-5 text-white/70" />
+                <span className="text-sm text-white/70 font-medium">This Week</span>
+              </div>
+              <p className="text-3xl font-bold">${earnings.week.toFixed(0)}</p>
+              <p className="text-xs text-white/60 mt-1">{stats?.jobs?.week || 0} jobs</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-5 h-5 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground font-medium">Hours This Week</span>
+              </div>
+              <p className="text-3xl font-bold">{(stats?.hours?.week || 0).toFixed(1)}</p>
+              <p className="text-xs text-muted-foreground mt-1">{(stats?.hours?.total || 0).toFixed(0)} total hrs</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
+                <span className="text-sm text-muted-foreground font-medium">Rating</span>
+              </div>
+              <p className="text-3xl font-bold">{(user?.rating || 5.0).toFixed(1)}</p>
+              <p className="text-xs text-muted-foreground mt-1">{stats?.totalReviews || 0} reviews</p>
+            </CardContent>
+          </Card>
+        </div>
+
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Pending Jobs */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Briefcase className="w-5 h-5" />
                   Job Requests
                   {pendingBookings.length > 0 && (
-                    <Badge className="ml-2">{pendingBookings.length}</Badge>
+                    <Badge className="ml-2 bg-orange-500">{pendingBookings.length}</Badge>
                   )}
                 </CardTitle>
                 <CardDescription>
@@ -1352,7 +1419,7 @@ function ProviderDashboard() {
                         const service = SERVICE_TYPES[booking.serviceType as ServiceType]
                         const Icon = service?.icon || Zap
                         return (
-                          <Card key={booking.id} className="p-4 border-2 border-primary/20">
+                          <Card key={booking.id} className="p-4 border-2 border-orange-500/20 hover:border-orange-500/40 transition-colors">
                             <div className="flex items-start justify-between mb-4">
                               <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 ${service?.bgColor} rounded-lg flex items-center justify-center`}>
@@ -1365,12 +1432,9 @@ function ProviderDashboard() {
                               </div>
                               <div className="text-right">
                                 <p className="text-xl font-bold text-green-600">${booking.totalAmount}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  ${booking.hourlyRate}/hr
-                                </p>
+                                <p className="text-xs text-muted-foreground">${booking.hourlyRate}/hr</p>
                               </div>
                             </div>
-
                             <div className="space-y-2 mb-4">
                               <div className="flex items-center gap-2 text-sm">
                                 <MapPin className="w-4 h-4 text-muted-foreground" />
@@ -1380,19 +1444,11 @@ function ProviderDashboard() {
                                 <p className="text-sm text-muted-foreground line-clamp-2">{booking.description}</p>
                               )}
                             </div>
-
                             <div className="flex gap-2">
-                              <Button 
-                                className="flex-1"
-                                onClick={() => acceptBooking(booking.id)}
-                              >
+                              <Button className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white" onClick={() => acceptBooking(booking.id)}>
                                 Accept
                               </Button>
-                              <Button 
-                                variant="outline"
-                                className="flex-1"
-                                onClick={() => setPendingBookings(pendingBookings.filter(b => b.id !== booking.id))}
-                              >
+                              <Button variant="outline" className="flex-1" onClick={() => setPendingBookings(pendingBookings.filter(b => b.id !== booking.id))}>
                                 Decline
                               </Button>
                             </div>
@@ -1404,69 +1460,116 @@ function ProviderDashboard() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Recent Jobs */}
+            {stats?.recentJobs && stats.recentJobs.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <History className="w-5 h-5" />
+                    Recent Completed Jobs
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {stats.recentJobs.map((job: any) => {
+                      const service = SERVICE_TYPES[job.serviceType as ServiceType]
+                      const Icon = service?.icon || Zap
+                      return (
+                        <div key={job.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 ${service?.bgColor} rounded-lg flex items-center justify-center`}>
+                              <Icon className={`w-4 h-4 ${service?.color}`} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{service?.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : ''} · {job.hours}h
+                              </p>
+                            </div>
+                          </div>
+                          <span className="font-semibold text-green-600">+${job.totalAmount}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
-          {/* Earnings & Stats */}
+          {/* Right Column - Stats */}
           <div className="space-y-6">
-            {/* Today's Earnings */}
-            <Card className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
-              <CardHeader>
-                <CardTitle className="text-white/80">Today's Earnings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-4xl font-bold">${earnings.today.toFixed(2)}</p>
-                <p className="text-white/70 mt-1">5 jobs completed</p>
-              </CardContent>
-            </Card>
-
-            {/* Stats */}
+            {/* Total Earnings Card */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Your Stats</CardTitle>
+                <CardTitle className="text-base">Lifetime Stats</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">This Week</span>
-                  <span className="font-semibold">${earnings.week.toFixed(2)}</span>
+                  <span className="text-muted-foreground flex items-center gap-2"><DollarSign className="w-4 h-4" /> Total Earnings</span>
+                  <span className="font-bold text-lg">${earnings.total.toFixed(0)}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Total Earnings</span>
-                  <span className="font-semibold">${earnings.total.toFixed(2)}</span>
+                  <span className="text-muted-foreground flex items-center gap-2"><Briefcase className="w-4 h-4" /> Jobs Completed</span>
+                  <span className="font-bold text-lg">{stats?.jobs?.total || user?.totalJobs || 0}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Rating</span>
-                  <span className="font-semibold flex items-center gap-1">
-                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                    {user?.rating?.toFixed(1) || '5.0'}
-                  </span>
+                  <span className="text-muted-foreground flex items-center gap-2"><Clock className="w-4 h-4" /> Total Hours</span>
+                  <span className="font-bold text-lg">{(stats?.hours?.total || 0).toFixed(0)}h</span>
                 </div>
+                <Separator />
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Total Jobs</span>
-                  <span className="font-semibold">{user?.totalJobs || 0}</span>
+                  <span className="text-muted-foreground flex items-center gap-2"><Star className="w-4 h-4 fill-yellow-400 text-yellow-400" /> Avg Rating</span>
+                  <span className="font-bold text-lg">{(user?.rating || 5.0).toFixed(1)}</span>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Quick Actions */}
+            {/* Rating Breakdown */}
+            {stats?.ratingBreakdown && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Rating Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {[5, 4, 3, 2, 1].map((star) => {
+                    const count = stats.ratingBreakdown[star - 1] || 0
+                    const total = stats.totalReviews || 1
+                    const pct = Math.round((count / total) * 100)
+                    return (
+                      <div key={star} className="flex items-center gap-2">
+                        <span className="text-sm w-6 text-right">{star}</span>
+                        <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-yellow-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-xs text-muted-foreground w-8">{count}</span>
+                      </div>
+                    )
+                  })}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Profile Card */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button variant="outline" className="w-full justify-start">
-                  <History className="w-4 h-4 mr-2" />
-                  Job History
-                </Button>
-                <Button variant="outline" className="w-full justify-start">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Service Settings
-                </Button>
-                <Button variant="outline" className="w-full justify-start">
-                  <DollarSign className="w-4 h-4 mr-2" />
-                  Earnings Details
-                </Button>
+              <CardContent className="p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <Avatar className="h-12 w-12 ring-2 ring-orange-500/30">
+                    <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-500 text-white font-bold">{user?.name?.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-semibold">{user?.name}</p>
+                    <p className="text-sm text-muted-foreground capitalize">{stats?.specialization || 'Provider'}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <DollarSign className="w-4 h-4" />
+                  <span>${stats?.hourlyRate || 70}/hr rate</span>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -1665,7 +1768,7 @@ function Footer() {
               <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
                 <Briefcase className="w-4 h-4 text-white" />
               </div>
-              <span className="font-bold">ServiceHub</span>
+              <span className="font-bold">HireNFire</span>
             </div>
             <p className="text-sm text-muted-foreground">
               Expert home services on demand. Available 24/7 in your area.
@@ -1702,7 +1805,7 @@ function Footer() {
         <Separator />
         <div className="flex flex-col md:flex-row justify-between items-center pt-6">
           <p className="text-sm text-muted-foreground">
-            © 2024 ServiceHub. All rights reserved.
+            © 2024 HireNFire. All rights reserved.
           </p>
         </div>
       </div>

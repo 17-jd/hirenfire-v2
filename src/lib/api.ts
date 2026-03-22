@@ -113,6 +113,9 @@ export const bookingsAPI = {
 
 // Provider API
 export const providerAPI = {
+  getStats: () =>
+    fetchAPI<any>('/provider/stats'),
+
   updateStatus: (isAvailable: boolean) =>
     fetchAPI<{ success: boolean }>('/provider/status', {
       method: 'POST',
