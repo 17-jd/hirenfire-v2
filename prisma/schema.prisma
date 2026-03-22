@@ -1,0 +1,124 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User can be both customer and service provider
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  password     String
+  name         String
+  phone        String?
+  avatar       String?
+  role         String   @default("customer") // "customer" or "provider"
+  isAvailable  Boolean  @default(false)      // For providers: available for bookings
+  rating       Float    @default(5.0)
+  totalJobs    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  providerInfo   ProviderInfo?
+  services       Service[]
+  bookingsAsCustomer Booking[] @relation("CustomerBookings")
+  bookingsAsProvider Booking[] @relation("ProviderBookings")
+  reviews        Review[]
+}
+
+model ProviderInfo {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization String   // electrician, tech_support, ac_technician, plumbing
+  hourlyRate     Float    @default(50.0)
+  experience     Int      @default(0) // years of experience
+  isVerified     Boolean  @default(false)
+  earnings       Float    @default(0.0)
+  completedJobs  Int      @default(0)
+  bio            String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Service {
+  id              String     @id @default(cuid())
+  providerId      String
+  provider        User       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  serviceType     String     // electrician, tech_support, ac_technician, plumbing
+  title           String
+  description     String?
+  hourlyRate      Float
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Booking {
+  id              String     @id @default(cuid())
+  customerId      String
+  providerId      String?
+  serviceId       String?
+  
+  // Service Location
+  serviceAddress  String
+  serviceLat      Float?
+  serviceLng      Float?
+  
+  // Booking details
+  status          String     @default("pending") // pending, accepted, in_progress, completed, cancelled
+  serviceType     String     // electrician, tech_support, ac_technician, plumbing
+  description     String?    // Problem description
+  scheduledDate   DateTime?  // When service is needed
+  scheduledTime   String?    // Time slot
+  hours           Float      @default(1.0) // Estimated hours
+  hourlyRate      Float      @default(0.0)
+  totalAmount     Float      @default(0.0)
+  paymentMethod   String     @default("cash") // cash, card
+  paymentStatus   String     @default("pending") // pending, paid, failed
+  
+  // Timestamps
+  requestedAt     DateTime   @default(now())
+  acceptedAt      DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelReason    String?
+  
+  // Relations
+  customer        User       @relation("CustomerBookings", fields: [customerId], references: [id])
+  provider        User?      @relation("ProviderBookings", fields: [providerId], references: [id])
+  review          Review?
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  bookingId   String   @unique
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reviewerId  String
+  reviewer    User     @relation(fields: [reviewerId], references: [id])
+  rating      Int      // 1-5 stars
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Real-time provider location tracking
+model ProviderLocation {
+  id          String   @id @default(cuid())
+  providerId  String   @unique
+  latitude    Float
+  longitude   Float
+  heading     Float?   // direction in degrees
+  lastUpdated DateTime @updatedAt
+}
