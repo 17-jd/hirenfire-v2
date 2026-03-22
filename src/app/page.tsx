@@ -738,155 +738,262 @@ function BookingPage() {
     return () => clearInterval(poll)
   }, [currentBooking, setCurrentBooking])
 
-  // Active booking view
-  if (currentBooking && !['completed', 'cancelled'].includes(currentBooking.status)) {
+  // Auto-generate OTP when status becomes in_progress
+  useEffect(() => {
+    if (currentBooking?.status === 'in_progress' && !currentOtp) {
+      bookingsAPI.generateOtp(currentBooking.id).then(({ otp }) => {
+        setCurrentOtp(otp)
+      }).catch(() => {})
+    }
+  }, [currentBooking?.status])
+
+  const [customerReviewRating, setCustomerReviewRating] = useState(0)
+  const [customerReviewComment, setCustomerReviewComment] = useState('')
+  const [reviewSubmitted, setReviewSubmitted] = useState(false)
+  const [reviewHover, setReviewHover] = useState(0)
+
+  // Active booking view — full lifecycle tracker
+  if (currentBooking) {
     const activeService = SERVICE_TYPES[currentBooking.serviceType as ServiceType]
     const ActiveIcon = activeService?.icon || Zap
+    const status = currentBooking.status
+
+    const steps = [
+      { key: 'pending', label: 'Finding', icon: Users },
+      { key: 'accepted', label: 'Accepted', icon: CheckCircle },
+      { key: 'in_progress', label: 'Working', icon: Wrench },
+      { key: 'completed', label: 'Done', icon: Star },
+    ]
+    const statusOrder = ['pending', 'accepted', 'in_progress', 'completed']
+    const currentStep = statusOrder.indexOf(status)
+    const isCancelled = status === 'cancelled'
 
     return (
       <div className="pt-20 pb-8 px-4 min-h-screen bg-muted/30">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto space-y-4">
+          {/* Status Tracker */}
           <Card className="overflow-hidden">
-            {/* Status Header */}
-            <div className="h-48 bg-gradient-to-br from-primary/20 to-primary/5 relative">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className={`w-20 h-20 ${activeService?.bgColor} rounded-full flex items-center justify-center mx-auto mb-4`}>
-                    <ActiveIcon className={`w-10 h-10 ${activeService?.color}`} />
-                  </div>
-                  <Badge className="text-sm">
-                    {currentBooking.status === 'pending' && 'Finding provider...'}
-                    {currentBooking.status === 'accepted' && 'Provider on the way'}
-                    {currentBooking.status === 'in_progress' && 'Service in progress'}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-
-            <CardContent className="p-6">
-              {/* Status */}
+            <div className={`p-6 ${isCancelled ? 'bg-red-500/10' : status === 'completed' ? 'bg-green-500/10' : 'bg-gradient-to-r from-orange-500/10 to-red-500/10'}`}>
               <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="font-semibold text-lg">
-                    {currentBooking.status === 'pending' && 'Searching for providers...'}
-                    {currentBooking.status === 'accepted' && 'Provider is on the way'}
-                    {currentBooking.status === 'in_progress' && 'Service in progress'}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {currentBooking.status === 'accepted' && 'Arriving in ~15 minutes'}
-                    {currentBooking.status === 'in_progress' && `Estimated ${currentBooking.hours} hours`}
-                  </p>
+                <div className="flex items-center gap-3">
+                  <div className={`w-12 h-12 ${activeService?.bgColor} rounded-xl flex items-center justify-center`}>
+                    <ActiveIcon className={`w-6 h-6 ${activeService?.color}`} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">{activeService?.name}</h3>
+                    <p className="text-sm text-muted-foreground">{currentBooking.serviceAddress}</p>
+                  </div>
                 </div>
                 <div className="text-right">
                   <p className="text-2xl font-bold">${currentBooking.totalAmount}</p>
-                  <p className="text-sm text-muted-foreground">{activeService?.name}</p>
+                  <p className="text-xs text-muted-foreground">{currentBooking.hours}h @ ${currentBooking.hourlyRate}/hr</p>
                 </div>
               </div>
 
-              {/* Service Details */}
-              <div className="space-y-4 mb-6">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                    <MapPin className="w-4 h-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Service Address</p>
-                    <p className="font-medium">{currentBooking.serviceAddress}</p>
-                  </div>
+              {/* Step Progress Bar */}
+              {!isCancelled && (
+                <div className="flex items-center justify-between">
+                  {steps.map((step, i) => {
+                    const StepIcon = step.icon
+                    const isActive = i === currentStep
+                    const isDone = i < currentStep
+                    return (
+                      <div key={step.key} className="flex flex-col items-center flex-1">
+                        <div className="flex items-center w-full">
+                          {i > 0 && (
+                            <div className={`flex-1 h-1 rounded-full ${isDone || isActive ? 'bg-orange-500' : 'bg-muted-foreground/20'}`} />
+                          )}
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+                            isDone ? 'bg-orange-500 text-white' :
+                            isActive ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30 ring-4 ring-orange-500/20' :
+                            'bg-muted text-muted-foreground'
+                          }`}>
+                            {isDone ? <CheckCircle className="w-5 h-5" /> : <StepIcon className={`w-5 h-5 ${isActive ? 'animate-pulse' : ''}`} />}
+                          </div>
+                          {i < steps.length - 1 && (
+                            <div className={`flex-1 h-1 rounded-full ${isDone ? 'bg-orange-500' : 'bg-muted-foreground/20'}`} />
+                          )}
+                        </div>
+                        <span className={`text-xs mt-2 font-medium ${isActive ? 'text-orange-500' : isDone ? 'text-foreground' : 'text-muted-foreground'}`}>{step.label}</span>
+                      </div>
+                    )
+                  })}
                 </div>
-                {currentBooking.description && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center flex-shrink-0">
-                      <Wrench className="w-4 h-4 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Problem Description</p>
-                      <p className="font-medium">{currentBooking.description}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Provider Info */}
-              {currentBooking.provider && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-12 w-12">
-                        <AvatarFallback>{currentBooking.provider.name?.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{currentBooking.provider.name}</p>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                          {currentBooking.provider.rating?.toFixed(1)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="icon" variant="outline">
-                        <Phone className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </>
               )}
 
-              {/* OTP Section for in_progress bookings */}
-              {currentBooking.status === 'in_progress' && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="text-center space-y-3">
-                    {currentOtp ? (
-                      <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
-                        <p className="text-sm text-muted-foreground mb-2">Completion OTP</p>
-                        <p className="text-4xl font-bold tracking-[0.5em] text-primary">{currentOtp}</p>
-                        <p className="text-xs text-muted-foreground mt-2">Share this code with your provider to confirm job completion</p>
-                      </div>
-                    ) : (
-                      <Button
-                        className="w-full"
-                        onClick={async () => {
-                          try {
-                            const { otp } = await bookingsAPI.generateOtp(currentBooking.id)
-                            setCurrentOtp(otp)
-                            toast({ title: 'OTP generated!' })
-                          } catch {
-                            toast({ title: 'Failed to generate OTP', variant: 'destructive' })
-                          }
-                        }}
-                      >
-                        <Shield className="w-4 h-4 mr-2" />
-                        Generate Completion OTP
-                      </Button>
-                    )}
-                  </div>
-                </>
+              {isCancelled && (
+                <div className="text-center py-2">
+                  <Badge variant="destructive" className="text-sm">Cancelled</Badge>
+                  {currentBooking.cancelReason && <p className="text-sm text-muted-foreground mt-2">{currentBooking.cancelReason}</p>}
+                </div>
               )}
-
-              {currentBooking.status === 'pending' && (
-                <>
-                  <Separator className="my-4" />
-                  <Button
-                    variant="destructive"
-                    className="w-full"
-                    onClick={async () => {
-                      try {
-                        await bookingsAPI.cancel(currentBooking.id)
-                        setCurrentBooking(null)
-                        toast({ title: 'Booking cancelled' })
-                      } catch {
-                        toast({ title: 'Failed to cancel booking', variant: 'destructive' })
-                      }
-                    }}
-                  >
-                    Cancel Request
-                  </Button>
-                </>
-              )}
-            </CardContent>
+            </div>
           </Card>
+
+          {/* Provider Card — shows after acceptance */}
+          {currentBooking.provider && (
+            <Card className="border-2 border-green-500/20">
+              <CardContent className="p-5">
+                <p className="text-xs text-green-600 font-medium mb-3 uppercase tracking-wider">Your Provider</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-14 w-14 ring-2 ring-green-500/30">
+                      <AvatarFallback className="bg-gradient-to-br from-green-500 to-emerald-600 text-white font-bold text-lg">{currentBooking.provider.name?.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-bold text-lg">{currentBooking.provider.name}</p>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                        <span className="font-medium">{currentBooking.provider.rating?.toFixed(1)}</span>
+                        <span className="text-muted-foreground">• {currentBooking.provider.totalJobs || 0} jobs</span>
+                      </div>
+                    </div>
+                  </div>
+                  <Button size="icon" variant="outline" className="h-12 w-12 rounded-full">
+                    <Phone className="w-5 h-5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Pending — searching animation */}
+          {status === 'pending' && (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Loader2 className="w-12 h-12 mx-auto animate-spin text-orange-500 mb-4" />
+                <p className="font-semibold text-lg">Finding a provider near you...</p>
+                <p className="text-sm text-muted-foreground mt-1">This usually takes less than a minute</p>
+                <Button
+                  variant="destructive"
+                  className="mt-6"
+                  onClick={async () => {
+                    try {
+                      await bookingsAPI.cancel(currentBooking.id)
+                      setCurrentBooking(null)
+                      toast({ title: 'Booking cancelled' })
+                    } catch {
+                      toast({ title: 'Failed to cancel booking', variant: 'destructive' })
+                    }
+                  }}
+                >
+                  Cancel Request
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* OTP Card — auto-shown when in_progress */}
+          {status === 'in_progress' && (
+            <Card className="border-2 border-orange-500/20 bg-orange-50/50 dark:bg-orange-950/10">
+              <CardContent className="p-6 text-center">
+                <Shield className="w-8 h-8 mx-auto text-orange-500 mb-3" />
+                <p className="text-sm font-medium text-muted-foreground mb-2">Completion OTP</p>
+                {currentOtp ? (
+                  <>
+                    <p className="text-5xl font-bold tracking-[0.5em] text-orange-500 my-4">{currentOtp}</p>
+                    <p className="text-sm text-muted-foreground">Share this code with your provider when the job is done</p>
+                  </>
+                ) : (
+                  <Loader2 className="w-6 h-6 mx-auto animate-spin text-orange-500" />
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Job Details */}
+          {currentBooking.description && !isCancelled && (
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs text-muted-foreground font-medium mb-2 uppercase tracking-wider">Job Details</p>
+                <p className="text-sm">{currentBooking.description}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Completed — Review Form */}
+          {status === 'completed' && !reviewSubmitted && (
+            <Card className="border-2 border-green-500/20 bg-green-50/50 dark:bg-green-950/10">
+              <CardContent className="p-6">
+                <div className="text-center mb-4">
+                  <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                  <h3 className="font-bold text-lg">Job Completed!</h3>
+                  <p className="text-sm text-muted-foreground">How was your experience?</p>
+                </div>
+                <div className="flex justify-center gap-2 mb-4">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      onClick={() => setCustomerReviewRating(star)}
+                      onMouseEnter={() => setReviewHover(star)}
+                      onMouseLeave={() => setReviewHover(0)}
+                      className="p-1"
+                    >
+                      <Star className={`w-8 h-8 transition-colors ${
+                        star <= (reviewHover || customerReviewRating)
+                          ? 'fill-yellow-400 text-yellow-400'
+                          : 'text-muted-foreground/30'
+                      }`} />
+                    </button>
+                  ))}
+                </div>
+                <Textarea
+                  placeholder="Tell us about your experience (optional)"
+                  value={customerReviewComment}
+                  onChange={(e) => setCustomerReviewComment(e.target.value)}
+                  rows={3}
+                  className="mb-4"
+                />
+                <Button
+                  className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white"
+                  disabled={customerReviewRating === 0}
+                  onClick={async () => {
+                    try {
+                      await reviewsAPI.create({
+                        bookingId: currentBooking.id,
+                        rating: customerReviewRating,
+                        comment: customerReviewComment || undefined,
+                      })
+                      setReviewSubmitted(true)
+                      toast({ title: 'Review submitted! Thank you.' })
+                    } catch (err: any) {
+                      toast({ title: err.message || 'Failed to submit review', variant: 'destructive' })
+                    }
+                  }}
+                >
+                  Submit Review
+                </Button>
+                <Button variant="ghost" className="w-full mt-2" onClick={() => { setCurrentBooking(null); setCurrentOtp(null) }}>
+                  Skip & Go Home
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* After review submitted */}
+          {status === 'completed' && reviewSubmitted && (
+            <Card className="border-2 border-green-500/20">
+              <CardContent className="p-6 text-center">
+                <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                <h3 className="font-bold text-lg">Thank you!</h3>
+                <p className="text-sm text-muted-foreground mb-4">Your review helps our providers improve</p>
+                <Button onClick={() => { setCurrentBooking(null); setCurrentOtp(null); setReviewSubmitted(false) }}>
+                  Back to Home
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Cancelled */}
+          {isCancelled && (
+            <Card>
+              <CardContent className="p-6 text-center">
+                <Button onClick={() => { setCurrentBooking(null) }}>
+                  Book Another Service
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     )
@@ -1173,121 +1280,125 @@ function ProviderDashboard() {
     }
   }
 
-  // Active booking view for provider
+  // Active booking view for provider — streamlined flow
   if (currentBooking && !['completed', 'cancelled'].includes(currentBooking.status)) {
     const activeService = SERVICE_TYPES[currentBooking.serviceType as ServiceType]
     const ActiveIcon = activeService?.icon || Zap
+    const isAccepted = currentBooking.status === 'accepted'
+    const isWorking = currentBooking.status === 'in_progress'
 
     return (
       <div className="pt-20 pb-8 px-4 min-h-screen bg-muted/30">
-        <div className="max-w-2xl mx-auto">
-          <Card className="overflow-hidden">
-            {/* Navigation Header */}
-            <div className="h-48 bg-gradient-to-br from-primary to-primary/70 relative text-white">
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                {currentBooking.status === 'accepted' ? (
-                  <>
-                    <MapPin className="w-12 h-12 mb-2" />
-                    <p className="text-lg font-medium">Navigate to Location</p>
-                    <p className="text-white/80">~15 min away</p>
-                  </>
+        <div className="max-w-2xl mx-auto space-y-4">
+          {/* Status Banner */}
+          <Card className={`border-2 overflow-hidden ${isAccepted ? 'border-blue-500/30' : 'border-orange-500/30'}`}>
+            <div className={`p-6 ${isAccepted ? 'bg-gradient-to-r from-blue-500 to-indigo-600' : 'bg-gradient-to-r from-orange-500 to-red-500'} text-white`}>
+              <div className="flex items-center gap-4">
+                {isAccepted ? (
+                  <MapPin className="w-10 h-10 flex-shrink-0" />
                 ) : (
-                  <>
-                    <ActiveIcon className="w-12 h-12 mb-2" />
-                    <p className="text-lg font-medium">Service in Progress</p>
-                    <p className="text-white/80">~{currentBooking.hours} hours estimated</p>
-                  </>
+                  <ActiveIcon className="w-10 h-10 flex-shrink-0 animate-pulse" />
                 )}
-              </div>
-            </div>
-
-            <CardContent className="p-6">
-              {/* Customer Info */}
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-14 w-14">
-                    <AvatarFallback>{currentBooking.customer?.name?.charAt(0) || 'C'}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-semibold text-lg">{currentBooking.customer?.name || 'Customer'}</p>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                      <span>{currentBooking.customer?.rating?.toFixed(1) || '5.0'}</span>
-                      <span>•</span>
-                      <span>{activeService?.name}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold">${currentBooking.totalAmount}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {currentBooking.hours} hrs @ ${currentBooking.hourlyRate}/hr
+                <div>
+                  <h3 className="font-bold text-xl">
+                    {isAccepted ? 'Navigate to Customer' : 'Service in Progress'}
+                  </h3>
+                  <p className="text-white/80 text-sm">
+                    {isAccepted ? 'Head to the service location and start the job' : `Estimated ${currentBooking.hours} hours`}
                   </p>
                 </div>
               </div>
+            </div>
 
-              {/* Service Details */}
-              <div className="space-y-4 mb-6">
-                <div className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                  <MapPin className="w-5 h-5 text-green-500 mt-0.5" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Service Address</p>
-                    <p className="font-medium">{currentBooking.serviceAddress}</p>
+            <CardContent className="p-5">
+              {/* Earnings */}
+              <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-950/20 rounded-xl mb-4">
+                <span className="text-sm font-medium text-muted-foreground">You'll earn</span>
+                <span className="text-2xl font-bold text-green-600">${currentBooking.totalAmount}</span>
+              </div>
+
+              {/* Customer */}
+              <div className="flex items-center gap-4 mb-4">
+                <Avatar className="h-12 w-12">
+                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold">{currentBooking.customer?.name?.charAt(0) || 'C'}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <p className="font-semibold">{currentBooking.customer?.name || 'Customer'}</p>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                    <span>{currentBooking.customer?.rating?.toFixed(1) || '5.0'}</span>
+                    <span>•</span>
+                    <span>{activeService?.name}</span>
                   </div>
                 </div>
-                {currentBooking.description && (
-                  <div className="flex items-start gap-3 p-3 bg-muted rounded-lg">
-                    <Wrench className="w-5 h-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Problem</p>
-                      <p className="font-medium">{currentBooking.description}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="space-y-3">
-                {currentBooking.status === 'accepted' && (
-                  <Button className="w-full" size="lg" onClick={startJob}>
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Start Job
-                  </Button>
-                )}
-                {currentBooking.status === 'in_progress' && (
-                  <div className="space-y-3">
-                    <div className="bg-muted/50 border rounded-lg p-4">
-                      <Label className="text-sm text-muted-foreground mb-2 block">Enter customer's OTP to complete</Label>
-                      <Input
-                        placeholder="Enter 6-digit OTP"
-                        value={otpInput}
-                        onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        className="text-center text-2xl tracking-[0.5em] font-bold"
-                        maxLength={6}
-                      />
-                    </div>
-                    <Button className="w-full" size="lg" onClick={completeJob} disabled={otpInput.length !== 6}>
-                      <Shield className="w-4 h-4 mr-2" />
-                      Verify OTP & Complete Job
-                    </Button>
-                  </div>
-                )}
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={async () => {
-                    try {
-                      await bookingsAPI.cancel(currentBooking.id)
-                      setCurrentBooking(null)
-                      toast({ title: 'Job cancelled' })
-                    } catch {
-                      toast({ title: 'Failed to cancel job', variant: 'destructive' })
-                    }
-                  }}
-                >
-                  Cancel Job
+                <Button size="icon" variant="outline" className="rounded-full h-10 w-10">
+                  <Phone className="w-4 h-4" />
                 </Button>
               </div>
+
+              {/* Location */}
+              <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg mb-4">
+                <MapPin className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Service Location</p>
+                  <p className="font-medium text-sm">{currentBooking.serviceAddress}</p>
+                </div>
+              </div>
+
+              {currentBooking.description && (
+                <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg mb-4">
+                  <Wrench className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Problem</p>
+                    <p className="font-medium text-sm">{currentBooking.description}</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Action Card */}
+          <Card>
+            <CardContent className="p-5">
+              {isAccepted && (
+                <Button className="w-full h-14 text-lg bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg" onClick={startJob}>
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  I've Arrived — Start Job
+                </Button>
+              )}
+              {isWorking && (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-muted-foreground mb-2">Enter customer's OTP to finish</p>
+                    <Input
+                      placeholder="Enter 6-digit OTP"
+                      value={otpInput}
+                      onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      className="text-center text-3xl tracking-[0.5em] font-bold h-14"
+                      maxLength={6}
+                    />
+                  </div>
+                  <Button className="w-full h-14 text-lg bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-lg" onClick={completeJob} disabled={otpInput.length !== 6}>
+                    <Shield className="w-5 h-5 mr-2" />
+                    Verify & Complete Job
+                  </Button>
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                className="w-full mt-3 text-muted-foreground"
+                onClick={async () => {
+                  try {
+                    await bookingsAPI.cancel(currentBooking.id)
+                    setCurrentBooking(null)
+                    toast({ title: 'Job cancelled' })
+                  } catch {
+                    toast({ title: 'Failed to cancel job', variant: 'destructive' })
+                  }
+                }}
+              >
+                Cancel Job
+              </Button>
             </CardContent>
           </Card>
         </div>
